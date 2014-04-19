@@ -86,6 +86,30 @@ impl<T> StableVec<T> {
             &mut self.vec.get_mut(i).value
         }
     }
+
+    fn insert<'a>(&'a mut self, index: uint, value: T) -> &'a mut T {
+        if index > self.len() {
+            fail!("StableVec.insert: index {} > length {}", index, self.len())
+        }
+
+        let start_ptr = self.vec.as_ptr();
+        self.vec.insert(index, ~Entry { value: value, base_ptr: ptr::mut_null() });
+        let end_ptr = self.vec.as_ptr();
+
+        {
+            let v = if start_ptr == end_ptr {
+                self.vec.mut_slice_from(index)
+            } else {
+                self.vec.as_mut_slice()
+            };
+            for elem in v.mut_iter() {
+                let p = elem as *mut _ as *mut _;
+                elem.base_ptr = p;
+            }
+        }
+
+        &mut self.vec.get_mut(index).value
+    }
 }
 
 impl<T> Container for StableVec<T> {
@@ -137,6 +161,10 @@ pub struct Handle<'a, T> {
 impl<'a, T> Handle<'a, T> {
     pub fn push(&mut self, value: T) -> &'a T {
         unsafe {&*(*self.sv).push(value)}
+    }
+
+    pub fn insert(&mut self, index: uint, value: T) -> &'a T {
+        unsafe {&*(*self.sv).insert(index, value)}
     }
 
     pub fn iter(&self) -> Items<'a, T> {
@@ -202,5 +230,25 @@ mod tests {
         for (i, x) in h.iter().enumerate() {
             assert_eq!(*x, i)
         }
+    }
+
+    #[test]
+    fn handle_insert_iter() {
+        let mut x = StableVec::new();
+
+        let mut h = x.handle();
+        h.push(1);
+        h.push(2);
+        let mut it = h.iter().map(|&x| x);
+        h.insert(1, 10);
+        h.insert(1, 20);
+        assert_eq!(it.next(), Some(1));
+        assert_eq!(it.next(), Some(20));
+        h.insert(3, 30);
+        assert_eq!(it.next(), Some(10));
+        assert_eq!(it.next(), Some(30));
+        h.insert(2, 40);
+        assert_eq!(it.next(), Some(2));
+        assert_eq!(it.next(), None);
     }
 }
