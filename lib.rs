@@ -8,7 +8,7 @@ use std::{cast, mem, ptr};
 
 macro_rules! debug_assert {
     ($cond: expr) => {
-        debug_assert!($cond, "assertion {} failed", stringify!(cond))
+        debug_assert!($cond, "assertion {} failed", stringify!($cond))
     };
     ($cond: expr, $($msg:tt)*) => {
         if !cfg!(ndebug) {
@@ -146,7 +146,7 @@ impl<'a, T> DoubleEndedIterator<&'a T> for Items<'a, T> {
             None
         } else {
             unsafe {
-                self.end = *(*self.end).base_ptr.offset(1) as *_;
+                self.end = *(*self.end).base_ptr.offset(-1) as *_;
                 Some(&(*self.end).value)
             }
         }
@@ -213,6 +213,25 @@ mod tests {
             }
         }
         assert_eq!(x.len(), 99)
+    }
+
+    #[test]
+    fn handle_iter() {
+        let mut x = StableVec::new();
+        let mut h = x.handle();
+        for i in range(0, 6) {
+            h.push(i);
+        }
+
+        let mut it = h.iter().map(|&x| x);
+        assert_eq!(it.next(), Some(0));
+        assert_eq!(it.next_back(), Some(5));
+        assert_eq!(it.next(), Some(1));
+        assert_eq!(it.next(), Some(2));
+        assert_eq!(it.next_back(), Some(4));
+        assert_eq!(it.next_back(), Some(3));
+        assert_eq!(it.next(), None);
+        assert_eq!(it.next_back(), None);
     }
 
     #[test]
