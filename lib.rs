@@ -58,16 +58,6 @@ impl<T> StableVec<T> {
         }
     }
 
-    fn push<'a>(&'a mut self, x: T) -> &'a mut T {
-        debug_assert!(self.vec.len() >= 1)
-        unsafe {self.remove_dummy()};
-        let p = self.push_single(x) as *mut _;
-        unsafe {
-            self.add_dummy();
-            &mut *p
-        }
-    }
-
     unsafe fn add_dummy(&mut self) {
         self.push_single(mem::init());
     }
@@ -75,25 +65,44 @@ impl<T> StableVec<T> {
         // kill the dummy end one
         cast::forget(self.vec.pop())
     }
+    unsafe fn fix_from(&mut self, i: uint) {
+        for elem in self.vec.mut_slice_from(i).mut_iter() {
+            let p = elem as *mut _ as *mut _;
+            elem.base_ptr = p;
+        }
+    }
+
+    fn push<'a>(&'a mut self, x: T) -> &'a mut T {
+        debug_assert!(self.vec.len() >= 1);
+        unsafe {self.remove_dummy()}
+        let p = self.push_single(x) as *mut _;
+        unsafe {
+            self.add_dummy();
+            &mut *p
+        }
+    }
+    fn push_nofix<'a>(&'a mut self, value: T) {
+        self.vec.push(~Entry { value: value, base_ptr: ptr::mut_null() });
+    }
     fn push_single<'a>(&'a mut self, value: T) -> &'a mut T {
         let start_ptr = self.vec.as_ptr();
         let i = self.vec.len();
-        self.vec.push(~Entry { value: value, base_ptr: ptr::mut_null() });
+        self.push_nofix(value);
         let end_ptr = self.vec.as_ptr();
 
+        let this_elem = self.vec.get_mut(i) as *mut _;
         if start_ptr == end_ptr {
-            let elem = self.vec.get_mut(i);
+            let elem = unsafe {&mut *this_elem};
             let p = elem as *mut _ as *mut _;
             elem.base_ptr = p;
 
             &mut elem.value
         } else {
-            for elem in self.vec.mut_iter() {
-                let p = elem as *mut _ as *mut _;
-                elem.base_ptr = p;
-            }
+            unsafe {
+                self.fix_from(0);
 
-            &mut self.vec.get_mut(i).value
+                &mut (*this_elem).value
+            }
         }
     }
 
@@ -106,17 +115,8 @@ impl<T> StableVec<T> {
         self.vec.insert(index, ~Entry { value: value, base_ptr: ptr::mut_null() });
         let end_ptr = self.vec.as_ptr();
 
-        {
-            let v = if start_ptr == end_ptr {
-                self.vec.mut_slice_from(index)
-            } else {
-                self.vec.as_mut_slice()
-            };
-            for elem in v.mut_iter() {
-                let p = elem as *mut _ as *mut _;
-                elem.base_ptr = p;
-            }
-        }
+        let n = if start_ptr == end_ptr { index } else { 0 };
+        unsafe {self.fix_from(n)}
 
         &mut self.vec.get_mut(index).value
     }
@@ -126,6 +126,36 @@ impl<T> Container for StableVec<T> {
     fn len(&self) -> uint {
         debug_assert!(self.vec.len() >= 1)
         self.vec.len() - 1
+    }
+}
+
+impl<T> FromIterator<T> for StableVec<T> {
+    fn from_iter<It: Iterator<T>>(it: It) -> StableVec<T> {
+        let (n, _) = it.size_hint();
+        let mut sv = StableVec::with_capacity(n);
+        sv.extend(it);
+        sv
+    }
+}
+
+impl<T> Extendable<T> for StableVec<T> {
+    fn extend<It: Iterator<T>>(&mut self, mut it: It) {
+        unsafe {
+            let index = self.len();
+            let (n, _) = it.size_hint();
+            let start_ptr = self.vec.as_ptr();
+
+            self.reserve_additional(n);
+            self.remove_dummy();
+
+            for elem in it {
+                self.push_nofix(elem);
+            }
+            self.add_dummy();
+            let end_ptr = self.vec.as_ptr();
+            let index = if start_ptr == end_ptr {index} else {0};
+            self.fix_from(index);
+        }
     }
 }
 
@@ -228,12 +258,9 @@ mod tests {
     #[test]
     fn handle_iter() {
         let mut x = StableVec::new();
-        let mut h = x.handle();
-        for i in range(0, 6) {
-            h.push(i);
-        }
+        x.extend(range(0, 6));
 
-        let mut it = h.iter().map(|&x| x);
+        let mut it = x.handle().iter().map(|&x| x);
         assert_eq!(it.next(), Some(0));
         assert_eq!(it.next_back(), Some(5));
         assert_eq!(it.next(), Some(1));
@@ -279,5 +306,21 @@ mod tests {
         h.insert(2, 40);
         assert_eq!(it.next(), Some(2));
         assert_eq!(it.next(), None);
+    }
+
+    #[test]
+    fn from_iter() {
+        let sv: StableVec<uint> = range(0u, 10).collect();
+        for (i, elem) in sv.iter().enumerate() {
+            assert_eq!(*elem, i)
+        }
+    }
+    #[test]
+    fn extend() {
+        let mut sv: StableVec<_> = range(0u, 10).collect();
+        sv.extend(range(10u, 20));
+        for (i, elem) in sv.iter().enumerate() {
+            assert_eq!(*elem, i);
+        }
     }
 }
