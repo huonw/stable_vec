@@ -217,6 +217,19 @@ impl<'a,T> Container for Handle<'a,T> {
         unsafe {(*self.sv).len()}
     }
 }
+// FIXME: it's annoying that this is required to get Extendable to
+// work.
+impl<'a,T> FromIterator<T> for Handle<'a,T> {
+    fn from_iter<It: Iterator<T>>(_: It) -> Handle<'a, T> {
+        fail!("StableVec: called `FromIterator` with a `Handle`")
+    }
+}
+
+impl<'a,T> Extendable<T> for Handle<'a,T> {
+    fn extend<It: Iterator<T>>(&mut self, it: It) {
+        unsafe {(*self.sv).extend(it)}
+    }
+}
 
 
 #[unsafe_destructor]
@@ -319,6 +332,18 @@ mod tests {
     fn extend() {
         let mut sv: StableVec<_> = range(0u, 10).collect();
         sv.extend(range(10u, 20));
+        for (i, elem) in sv.iter().enumerate() {
+            assert_eq!(*elem, i);
+        }
+    }
+
+    #[test]
+    fn handle_extend() {
+        let mut sv = StableVec::new();
+        {
+            let mut h = sv.handle();
+            h.extend(range(0u, 10));
+        }
         for (i, elem) in sv.iter().enumerate() {
             assert_eq!(*elem, i);
         }
