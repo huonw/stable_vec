@@ -122,6 +122,13 @@ impl<T> StableVec<T> {
     }
 }
 
+#[unsafe_destructor]
+impl<T> Drop for StableVec<T> {
+    fn drop(&mut self) {
+        unsafe {self.remove_dummy()}
+    }
+}
+
 impl<T> Container for StableVec<T> {
     fn len(&self) -> uint {
         debug_assert!(self.vec.len() >= 1)
@@ -140,12 +147,13 @@ impl<T> FromIterator<T> for StableVec<T> {
 
 impl<T> Extendable<T> for StableVec<T> {
     fn extend<It: Iterator<T>>(&mut self, mut it: It) {
-        unsafe {
-            let index = self.len();
-            let (n, _) = it.size_hint();
-            let start_ptr = self.vec.as_ptr();
+        let index = self.len();
+        let (n, _) = it.size_hint();
+        let start_ptr = self.vec.as_ptr();
 
-            self.reserve_additional(n);
+        self.reserve_additional(n);
+
+        unsafe {
             self.remove_dummy();
 
             for elem in it {
@@ -230,15 +238,6 @@ impl<'a,T> Extendable<T> for Handle<'a,T> {
         unsafe {(*self.sv).extend(it)}
     }
 }
-
-
-#[unsafe_destructor]
-impl<T> Drop for StableVec<T> {
-    fn drop(&mut self) {
-        unsafe {self.remove_dummy()}
-    }
-}
-
 
 #[cfg(test)]
 mod tests {
