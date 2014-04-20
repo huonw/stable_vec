@@ -27,9 +27,19 @@ pub struct StableVec<T> {
 
 impl<T> StableVec<T> {
     pub fn new() -> StableVec<T> {
-        let mut sv = StableVec { vec: vec![] };
-        unsafe {sv.add_dummy()};
+        StableVec::with_capacity(4)
+    }
+    pub fn with_capacity(n: uint) -> StableVec<T> {
+        let mut sv = StableVec { vec: Vec::with_capacity(n + 1) };
+        unsafe {sv.add_dummy()}
         sv
+    }
+
+    pub fn reserve(&mut self, n: uint) {
+        self.vec.reserve(n + 1);
+    }
+    pub fn reserve_additional(&mut self, n: uint) {
+        self.vec.reserve_additional(n)
     }
 
     pub fn handle<'a>(&'a mut self) -> Handle<'a, T> {
