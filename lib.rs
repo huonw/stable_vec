@@ -146,7 +146,7 @@ impl<T> FromIterator<T> for StableVec<T> {
 }
 
 impl<T> Extendable<T> for StableVec<T> {
-    fn extend<It: Iterator<T>>(&mut self, mut it: It) {
+    fn extend<It: Iterator<T>>(&mut self, it: It) {
         let index = self.len();
         let (n, _) = it.size_hint();
         let start_ptr = self.vec.as_ptr();
@@ -155,11 +155,14 @@ impl<T> Extendable<T> for StableVec<T> {
 
         unsafe {
             self.remove_dummy();
-
-            for elem in it {
-                self.push_nofix(elem);
-            }
-            self.add_dummy();
+            std::unstable::finally::try_finally(
+                self, it,
+                |this, mut it_| {
+                    for elem in it_ {
+                        this.push_nofix(elem);
+                    }
+                },
+                |this| this.add_dummy());
             let end_ptr = self.vec.as_ptr();
             let index = if start_ptr == end_ptr {index} else {0};
             self.fix_from(index);
@@ -345,6 +348,65 @@ mod tests {
         }
         for (i, elem) in sv.iter().enumerate() {
             assert_eq!(*elem, i);
+        }
+    }
+
+    // check that a variety of uses of StableVec are failure-safe,
+    // i.e. that failure runs each destructor once (and only once)
+    #[test]
+    fn dtor_fail() {
+        use std::{task, io};
+
+        static mut DROP_COUNT: u64 = 0;
+
+        struct Counter { x: uint }
+        impl Drop for Counter {
+            fn drop(&mut self) {
+                let bit = 1 << self.x;
+                unsafe {
+                    assert!(DROP_COUNT & bit == 0)
+                    DROP_COUNT |= bit;
+                }
+            }
+        }
+
+        for n in range(0u, 32) {
+            macro_rules! e { ($e:expr) => { $e } }
+            macro_rules! t {
+                ($iter: ident => $($inner:tt)*) => {
+                    {
+                        unsafe {DROP_COUNT = 0}
+
+                        let ret = task::try(proc() {
+                            io::stdio::set_stderr(~io::util::NullWriter);
+
+                            let mut $iter = range(0u, n).map(|x| Counter { x: x })
+                                .chain(Some(()).move_iter().map(|_| -> Counter fail!()));
+                            e!({$($inner)*});
+                        });
+                        assert!(ret.is_err())
+                        unsafe {
+                            assert_eq!(DROP_COUNT, (1 << n) - 1);
+                        }
+
+                    }
+                }
+            }
+
+            t!(iter => let _: StableVec<Counter> = iter.collect(););
+            t!(_iter => {
+                let mut sv = StableVec::new();
+                sv.extend(_iter);
+            });
+            t!(iter => {
+                let mut sv = StableVec::new();
+                for x in iter { sv.push(x); }
+            });
+            t!(iter => {
+                let mut sv = StableVec::new();
+                let mut h = sv.handle();
+                for x in iter { h.push(x); }
+            });
         }
     }
 }
