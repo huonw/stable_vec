@@ -3,6 +3,8 @@
 
 #![feature(macro_rules)]
 
+#[cfg(test)] extern crate test;
+
 use std::kinds::marker;
 use std::{cast, mem, ptr};
 
@@ -408,5 +410,51 @@ mod tests {
                 for x in iter { h.push(x); }
             });
         }
+    }
+}
+
+
+#[cfg(test)]
+mod benches {
+    use super::StableVec;
+    use test::Bencher;
+
+    #[bench]
+    fn new(b: &mut Bencher) {
+        b.iter(|| StableVec::<int>::new());
+    }
+
+
+    #[bench]
+    fn push_100(b: &mut Bencher) {
+        b.iter(|| {
+            let mut sv = StableVec::new();
+            let mut h = sv.handle();
+            for x in range(0, 100) { h.push(x); }
+        });
+    }
+    #[bench]
+    fn extend_100(b: &mut Bencher) {
+        b.iter(|| {
+            let mut sv = StableVec::new();
+            let mut h = sv.handle();
+            h.extend(range(0, 100))
+        })
+    }
+    #[bench]
+    fn collect_100(b: &mut Bencher) {
+        b.iter(|| {
+            range(0, 100).collect::<StableVec<int>>()
+        })
+    }
+
+
+    #[bench]
+    fn iter_100(b: &mut Bencher) {
+        let mut sv: StableVec<int> = range(0, 100).collect();
+        let h = sv.handle();
+        b.iter(|| {
+            for _ in h.iter() {}
+        })
     }
 }
