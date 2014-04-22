@@ -51,6 +51,10 @@ impl<T> StableVec<T> {
         }
     }
 
+    pub fn get<'a>(&'a self, index: uint) -> &'a T {
+        &self.vec.get(index).value
+    }
+
     fn iter<'a>(&'a self) -> Items<'a, T> {
         debug_assert!(self.vec.len() >= 1)
         Items {
@@ -212,6 +216,10 @@ pub struct Handle<'a, T> {
 }
 
 impl<'a, T> Handle<'a, T> {
+    pub fn get(&self, index: uint) -> &'a T {
+        unsafe {(*self.sv).get(index)}
+    }
+
     pub fn push(&mut self, value: T) -> &'a T {
         unsafe {&*(*self.sv).push(value)}
     }
@@ -255,6 +263,16 @@ mod tests {
         for i in range(1u, 100) {
             x.push(i);
             assert_eq!(x.len(), i);
+        }
+    }
+
+    #[test]
+    fn handle_get() {
+        let mut x = StableVec::new();
+        let mut h = x.handle();
+        h.extend(range(0u, 10));
+        for i in range(0u, 10) {
+            assert_eq!(*h.get(i), i)
         }
     }
 
