@@ -24,20 +24,23 @@ struct Entry<T> {
     base_ptr: *mut *mut Entry<T>
 }
 pub struct StableVec<T> {
+    /// Invariants:
+    /// - empty, or
+    /// - the last element is a dummy entry to enable nicer iterators.
     vec: Vec<~Entry<T>>
 }
 
 impl<T> StableVec<T> {
     pub fn new() -> StableVec<T> {
-        StableVec::with_capacity(4)
+        StableVec { vec: Vec::new() }
     }
     pub fn with_capacity(n: uint) -> StableVec<T> {
-        let mut sv = StableVec { vec: Vec::with_capacity(n + 1) };
-        unsafe {sv.add_dummy()}
-        sv
+        // n + 1 for the dummy
+        StableVec { vec: Vec::with_capacity(n + 1) }
     }
 
     pub fn reserve(&mut self, n: uint) {
+        // n + 1 for the dummy
         self.vec.reserve(n + 1);
     }
     pub fn reserve_additional(&mut self, n: uint) {
@@ -56,11 +59,23 @@ impl<T> StableVec<T> {
     }
 
     fn iter<'a>(&'a self) -> Items<'a, T> {
-        debug_assert!(self.vec.len() >= 1)
-        Items {
-            lifetime: marker::ContravariantLifetime,
-            start: &**self.vec.get(0),
-            end: &**self.vec.last().unwrap()
+        // if we're empty then make an empty iterator (we might not
+        // have the dummy node to substitute): unfortunately this
+        // means that any updates to the vec are completely ignored,
+        // but that's true even using the else branch (if we
+        // guaranteed the existance of the dummy).
+        if self.vec.len() == 0 {
+            Items {
+                lifetime: marker::ContravariantLifetime,
+                start: ptr::null(),
+                end: ptr::null()
+            }
+        } else {
+            Items {
+                lifetime: marker::ContravariantLifetime,
+                start: &**self.vec.get(0),
+                end: &**self.vec.last().unwrap()
+            }
         }
     }
 
@@ -79,7 +94,6 @@ impl<T> StableVec<T> {
     }
 
     fn push<'a>(&'a mut self, x: T) -> &'a mut T {
-        debug_assert!(self.vec.len() >= 1);
         unsafe {self.remove_dummy()}
         let p = self.push_single(x) as *mut _;
         unsafe {
@@ -87,9 +101,12 @@ impl<T> StableVec<T> {
             &mut *p
         }
     }
+    /// Push an element directly onto the vector, making no adjustments.
     fn push_nofix<'a>(&'a mut self, value: T) {
         self.vec.push(~Entry { value: value, base_ptr: ptr::mut_null() });
     }
+    /// Push a single value directly onto the end of the vector,
+    /// *without* adjusting the dummy.
     fn push_single<'a>(&'a mut self, value: T) -> &'a mut T {
         let start_ptr = self.vec.as_ptr();
         let i = self.vec.len();
@@ -113,7 +130,7 @@ impl<T> StableVec<T> {
     }
 
     fn insert<'a>(&'a mut self, index: uint, value: T) -> &'a mut T {
-        if index > self.len() {
+        if index >= self.len() {
             fail!("StableVec.insert: index {} > length {}", index, self.len())
         }
 
@@ -137,8 +154,14 @@ impl<T> Drop for StableVec<T> {
 
 impl<T> Container for StableVec<T> {
     fn len(&self) -> uint {
-        debug_assert!(self.vec.len() >= 1)
-        self.vec.len() - 1
+        // we can be empty in two ways: self.vec being completely
+        // empty & self.vec just containing the dummy (and any
+        // non-zero length vector contains the dummy for sure).
+        if self.vec.len() == 0 {
+            0
+        } else {
+            self.vec.len() - 1
+        }
     }
 }
 
@@ -447,16 +470,22 @@ mod benches {
     fn push_100(b: &mut Bencher) {
         b.iter(|| {
             let mut sv = StableVec::new();
-            let mut h = sv.handle();
-            for x in range(0, 100) { h.push(x); }
+            {
+                let mut h = sv.handle();
+                for x in range(0, 100) { h.push(x); }
+            }
+            sv
         });
     }
     #[bench]
     fn extend_100(b: &mut Bencher) {
         b.iter(|| {
             let mut sv = StableVec::new();
-            let mut h = sv.handle();
-            h.extend(range(0, 100))
+            {
+                let mut h = sv.handle();
+                h.extend(range(0, 100));
+            }
+            sv
         })
     }
     #[bench]
@@ -472,7 +501,7 @@ mod benches {
         let mut sv: StableVec<int> = range(0, 100).collect();
         let h = sv.handle();
         b.iter(|| {
-            for _ in h.iter() {}
+            for i in h.iter() { ::test::black_box(i) }
         })
     }
 }
