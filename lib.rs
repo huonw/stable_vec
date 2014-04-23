@@ -55,7 +55,11 @@ impl<T> StableVec<T> {
     }
 
     pub fn get<'a>(&'a self, index: uint) -> &'a T {
-        &self.vec.get(index).value
+        if index >= self.len() {
+            fail!("StableVec.get: index {} greater than length {}", index, self.len())
+        } else {
+            &self.vec.get(index).value
+        }
     }
 
     fn iter<'a>(&'a self) -> Items<'a, T> {
@@ -278,6 +282,7 @@ impl<'a,T> Extendable<T> for Handle<'a,T> {
 #[cfg(test)]
 mod tests {
     use super::StableVec;
+    use std::{task, io};
 
     #[test]
     fn push_len() {
@@ -394,12 +399,24 @@ mod tests {
         }
     }
 
+    #[test]
+    fn get_oob() {
+        for n in range(0u, 10) {
+            for i in range(n, n+10) {
+                let sv: StableVec<uint> = range(0, n).collect();
+                let res = task::try(proc() {
+                    io::stdio::set_stderr(~io::util::NullWriter);
+                    sv.get(i);
+                });
+                assert!(res.is_err());
+            }
+        }
+    }
+
     // check that a variety of uses of StableVec are failure-safe,
     // i.e. that failure runs each destructor once (and only once)
     #[test]
     fn dtor_fail() {
-        use std::{task, io};
-
         static mut DROP_COUNT: u64 = 0;
 
         struct Counter { x: uint }
