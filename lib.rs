@@ -41,10 +41,19 @@ impl<T> StableVec<T> {
 
     pub fn reserve(&mut self, n: uint) {
         // n + 1 for the dummy
+        // FIXME: this pointer checking is quite fragile
+        let p = self.vec.as_ptr();
         self.vec.reserve(n + 1);
+        if p != self.vec.as_ptr() {
+            unsafe {self.fix_from(0)}
+        }
     }
     pub fn reserve_additional(&mut self, n: uint) {
-        self.vec.reserve_additional(n)
+        let p = self.vec.as_ptr();
+        self.vec.reserve_additional(n);
+        if p != self.vec.as_ptr() {
+            unsafe {self.fix_from(0)}
+        }
     }
 
     pub fn handle<'a>(&'a mut self) -> Handle<'a, T> {
