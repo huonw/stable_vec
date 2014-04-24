@@ -83,11 +83,14 @@ impl<T> StableVec<T> {
         }
     }
 
+    // FIXME: this should be able to reuse a previous dummy i.e. each
+    // StableVec should need to allocate a dummy exactly once.
     unsafe fn add_dummy(&mut self) {
         self.push_single(mem::init());
     }
     unsafe fn remove_dummy(&mut self) {
         // kill the dummy end one
+        // FIXME: leaks memory.
         cast::forget(self.vec.pop())
     }
     unsafe fn fix_from(&mut self, i: uint) {
@@ -97,6 +100,8 @@ impl<T> StableVec<T> {
         }
     }
 
+    /// FIXME: this should only need to do one `fix_from` call, rather
+    /// than one for `x` and one for `add_dummy`
     fn push<'a>(&'a mut self, x: T) -> &'a mut T {
         unsafe {self.remove_dummy()}
         let p = self.push_single(x) as *mut _;
@@ -274,6 +279,9 @@ impl<'a,T> FromIterator<T> for Handle<'a,T> {
 }
 
 impl<'a,T> Extendable<T> for Handle<'a,T> {
+    // FIXME: this is probably incorrect: the iterator could probably
+    // capture another handle to the vector, meaning the removal of
+    // the dummy can probably cause crashes.
     fn extend<It: Iterator<T>>(&mut self, it: It) {
         unsafe {(*self.sv).extend(it)}
     }
