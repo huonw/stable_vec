@@ -193,26 +193,15 @@ impl<T> FromIterator<T> for StableVec<T> {
 }
 
 impl<T> Extendable<T> for StableVec<T> {
-    fn extend<It: Iterator<T>>(&mut self, it: It) {
-        let index = self.len();
+    fn extend<It: Iterator<T>>(&mut self, mut it: It) {
         let (n, _) = it.size_hint();
-        let start_ptr = self.vec.as_ptr();
 
         self.reserve_additional(n);
 
-        unsafe {
-            self.remove_dummy();
-            std::unstable::finally::try_finally(
-                self, it,
-                |this, mut it_| {
-                    for elem in it_ {
-                        this.push_nofix(elem);
-                    }
-                },
-                |this| this.add_dummy());
-            let end_ptr = self.vec.as_ptr();
-            let index = if start_ptr == end_ptr {index} else {0};
-            self.fix_from(index);
+        // FIXME: this could probably be more efficient, but needs to
+        // ensure the dummy node is handled correctly.
+        for elem in it {
+            self.push(elem);
         }
     }
 }
@@ -485,6 +474,18 @@ mod tests {
                 for x in iter { h.push(x); }
             });
         }
+    }
+
+    #[test]
+    fn extend_handle_in_iterator() {
+        // one handle can be used to extend while another is used
+        // *inside* the iterator.
+        let mut sv = StableVec::new();
+        let mut h = sv.handle();
+        h.push(1);
+        let g = h;
+        h.extend(range(0, 2).filter_map(|_| g.iter().next().map(|&x|x)));
+        assert_eq!(h.len(), 3);
     }
 }
 
