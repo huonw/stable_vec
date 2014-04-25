@@ -247,19 +247,32 @@ pub struct Handle<'a, T> {
 
 impl<'a, T> Handle<'a, T> {
     pub fn get(&self, index: uint) -> &'a T {
-        unsafe {(*self.sv).get(index)}
+        unsafe {self.sv().get(index)}
     }
 
     pub fn push(&mut self, value: T) -> &'a T {
-        unsafe {&*(*self.sv).push(value)}
+        unsafe {&*self.mut_sv().push(value)}
     }
 
     pub fn insert(&mut self, index: uint, value: T) -> &'a T {
-        unsafe {&*(*self.sv).insert(index, value)}
+        unsafe {&*self.mut_sv().insert(index, value)}
     }
 
     pub fn iter(&self) -> Items<'a, T> {
-        unsafe {(*self.sv).iter()}
+        unsafe {self.sv().iter()}
+    }
+
+    /// Get a mutable reference to the internal StableVec. Be careful
+    /// that the returned `&mut` reference doesn't alias with anything.
+    unsafe fn mut_sv(&mut self) -> &'a mut StableVec<T> {
+        &mut *self.sv
+    }
+
+    /// Get a reference to the internal StableVec. Be careful that the
+    /// created `&` reference doesn't have any modifications occur
+    /// under its feet.
+    unsafe fn sv(&self) -> &'a StableVec<T> {
+        &*self.sv
     }
 }
 
