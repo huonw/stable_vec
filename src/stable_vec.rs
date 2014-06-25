@@ -1,9 +1,10 @@
 #![crate_id="stable_vec"]
 #![crate_type="lib"]
 
-#![feature(macro_rules)]
+#![feature(macro_rules, phase)]
 
 #[cfg(test)] extern crate test;
+#[phase(syntax, link)] extern crate log;
 
 use std::kinds::marker;
 use std::{cast, mem, ptr};
