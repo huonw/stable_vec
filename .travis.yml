@@ -9,8 +9,9 @@ install:
   - sudo apt-get install rust-nightly cargo
 script:
   - cargo build
-  - rustc --test src/spellck.rs -o tester
+  - rustc --test src/stable_vec.rs -o tester
   - ./tester
-  - rustdoc -o doc src/spellck.rs
+  - ./tester --bench
+  - rustdoc -o doc src/stable_vec.rs
 after_script:
   - curl http://www.rust-ci.org/artifacts/put?t=$RUSTCI_TOKEN | sh

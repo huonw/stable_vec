@@ -1,0 +1,9 @@
+[package]
+
+name = "stable_vec"
+version = "0.0.0"
+authors = [ "Huon Wilson <dbau.pp@gmail.com>" ]
+
+[[lib]]
+
+name = "stable_vec"
