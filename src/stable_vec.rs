@@ -1,13 +1,13 @@
 #![crate_id="stable_vec"]
 #![crate_type="lib"]
 
-#![feature(macro_rules, phase)]
+#![feature(macro_rules, phase, unsafe_destructor)]
 
 #[cfg(test)] extern crate test;
-#[phase(syntax, link)] extern crate log;
+#[phase(plugin, link)] extern crate log;
 
 use std::kinds::marker;
-use std::{cast, mem, ptr};
+use std::{mem, ptr};
 
 macro_rules! debug_assert {
     ($cond: expr) => {
@@ -28,7 +28,7 @@ pub struct StableVec<T> {
     /// Invariants:
     /// - empty, or
     /// - the last element is a dummy entry to enable nicer iterators.
-    vec: Vec<~Entry<T>>
+    vec: Vec<Box<Entry<T>>>
 }
 
 impl<T> StableVec<T> {
@@ -96,12 +96,12 @@ impl<T> StableVec<T> {
     // FIXME: this should be able to reuse a previous dummy i.e. each
     // StableVec should need to allocate a dummy exactly once.
     unsafe fn add_dummy(&mut self) {
-        self.push_single(mem::init());
+        self.push_single(mem::zeroed());
     }
     unsafe fn remove_dummy(&mut self) {
         // kill the dummy end one
         // FIXME: leaks memory.
-        cast::forget(self.vec.pop())
+        mem::forget(self.vec.pop())
     }
     unsafe fn fix_from(&mut self, i: uint) {
         for elem in self.vec.mut_slice_from(i).mut_iter() {
@@ -122,7 +122,7 @@ impl<T> StableVec<T> {
     }
     /// Push an element directly onto the vector, making no adjustments.
     fn push_nofix<'a>(&'a mut self, value: T) {
-        self.vec.push(~Entry { value: value, base_ptr: ptr::mut_null() });
+        self.vec.push(box Entry { value: value, base_ptr: ptr::mut_null() });
     }
     /// Push a single value directly onto the end of the vector,
     /// *without* adjusting the dummy.
@@ -154,7 +154,7 @@ impl<T> StableVec<T> {
         }
 
         let start_ptr = self.vec.as_ptr();
-        self.vec.insert(index, ~Entry { value: value, base_ptr: ptr::mut_null() });
+        self.vec.insert(index, box Entry { value: value, base_ptr: ptr::mut_null() });
         let end_ptr = self.vec.as_ptr();
 
         let n = if start_ptr == end_ptr { index } else { 0 };
@@ -171,7 +171,7 @@ impl<T> Drop for StableVec<T> {
     }
 }
 
-impl<T> Container for StableVec<T> {
+impl<T> Collection for StableVec<T> {
     fn len(&self) -> uint {
         // we can be empty in two ways: self.vec being completely
         // empty & self.vec just containing the dummy (and any
@@ -277,7 +277,7 @@ impl<'a, T> Handle<'a, T> {
     }
 }
 
-impl<'a,T> Container for Handle<'a,T> {
+impl<'a,T> Collection for Handle<'a,T> {
     fn len(&self) -> uint {
         unsafe {(*self.sv).len()}
     }
@@ -425,7 +425,7 @@ mod tests {
             for i in range(n, n+10) {
                 let sv: StableVec<uint> = range(0, n).collect();
                 let res = task::try(proc() {
-                    io::stdio::set_stderr(~io::util::NullWriter);
+                    io::stdio::set_stderr(box io::util::NullWriter);
                     sv.get(i);
                 });
                 assert!(res.is_err());
@@ -458,7 +458,7 @@ mod tests {
                         unsafe {DROP_COUNT = 0}
 
                         let ret = task::try(proc() {
-                            io::stdio::set_stderr(~io::util::NullWriter);
+                            io::stdio::set_stderr(box io::util::NullWriter);
 
                             let mut $iter = range(0u, n).map(|x| Counter { x: x })
                                 .chain(Some(()).move_iter().map(|_| -> Counter fail!()));
