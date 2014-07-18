@@ -1,4 +1,4 @@
-#![crate_id="stable_vec"]
+#![crate_name="stable_vec"]
 #![crate_type="lib"]
 
 #![feature(macro_rules, phase, unsafe_destructor)]
@@ -68,7 +68,7 @@ impl<T> StableVec<T> {
         if index >= self.len() {
             fail!("StableVec.get: index {} greater than length {}", index, self.len())
         } else {
-            &self.vec.get(index).value
+            &self.vec[index].value
         }
     }
 
@@ -87,7 +87,7 @@ impl<T> StableVec<T> {
         } else {
             Items {
                 lifetime: marker::ContravariantLifetime,
-                start: &**self.vec.get(0),
+                start: &*self.vec[0],
                 end: &**self.vec.last().unwrap()
             }
         }
@@ -211,8 +211,8 @@ impl<T> Extendable<T> for StableVec<T> {
 // empty vector (start == end always in that case). Is this concerning?
 pub struct Items<'a, T> {
     lifetime: marker::ContravariantLifetime<'a>,
-    start: *Entry<T>,
-    end: *Entry<T>,
+    start: *const Entry<T>,
+    end: *const Entry<T>,
 }
 
 impl<'a, T> Iterator<&'a T> for Items<'a, T> {
@@ -222,7 +222,7 @@ impl<'a, T> Iterator<&'a T> for Items<'a, T> {
         } else {
             let p = self.start;
             unsafe {
-                self.start = *(*p).base_ptr.offset(1) as *_;
+                self.start = *(*p).base_ptr.offset(1) as *const _;
                 Some(&(*p).value)
             }
         }
@@ -234,7 +234,7 @@ impl<'a, T> DoubleEndedIterator<&'a T> for Items<'a, T> {
             None
         } else {
             unsafe {
-                self.end = *(*self.end).base_ptr.offset(-1) as *_;
+                self.end = *(*self.end).base_ptr.offset(-1) as *const _;
                 Some(&(*self.end).value)
             }
         }
@@ -341,7 +341,7 @@ mod tests {
     #[test]
     fn handle_iter() {
         let mut x = StableVec::new();
-        x.extend(range(0, 6));
+        x.extend(range(0u, 6));
 
         let mut it = x.handle().iter().map(|&x| x);
         assert_eq!(it.next(), Some(0));
@@ -376,7 +376,7 @@ mod tests {
         let mut x = StableVec::new();
 
         let mut h = x.handle();
-        h.push(1);
+        h.push(1u);
         h.push(2);
         let mut it = h.iter().map(|&x| x);
         h.insert(1, 10);
@@ -496,9 +496,9 @@ mod tests {
         // *inside* the iterator.
         let mut sv = StableVec::new();
         let mut h = sv.handle();
-        h.push(1);
+        h.push(1u);
         let g = h;
-        h.extend(range(0, 2).filter_map(|_| g.iter().next().map(|&x|x)));
+        h.extend(range(0u, 2).filter_map(|_| g.iter().next().map(|&x|x)));
         assert_eq!(h.len(), 3);
     }
 }
@@ -521,7 +521,7 @@ mod benches {
             let mut sv = StableVec::new();
             {
                 let mut h = sv.handle();
-                for x in range(0, 100) { h.push(x); }
+                for x in range(0u, 100) { h.push(x); }
             }
             sv
         });
@@ -532,7 +532,7 @@ mod benches {
             let mut sv = StableVec::new();
             {
                 let mut h = sv.handle();
-                h.extend(range(0, 100));
+                h.extend(range(0u, 100));
             }
             sv
         })
@@ -540,14 +540,14 @@ mod benches {
     #[bench]
     fn collect_100(b: &mut Bencher) {
         b.iter(|| {
-            range(0, 100).collect::<StableVec<int>>()
+            range(0i, 100).collect::<StableVec<int>>()
         })
     }
 
 
     #[bench]
     fn iter_100(b: &mut Bencher) {
-        let mut sv: StableVec<int> = range(0, 100).collect();
+        let mut sv: StableVec<int> = range(0i, 100).collect();
         let h = sv.handle();
         b.iter(|| {
             for i in h.iter() { ::test::black_box(i) }

@@ -5,7 +5,7 @@
 
 A stable vector implemented in Rust.
 
-Compiles with e07cec6 2014-06-24 00:36:54 +0000.
+Compiles with f50e4ee55 2014-07-18 00:01:22.
 
 
 
